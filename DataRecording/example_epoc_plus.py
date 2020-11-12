@@ -32,7 +32,7 @@ class EEG(object):
     
     def __init__(self):
         self.hid = None
-        self.delimiter = ", "
+        self.delimiter = ","
         
         devicesUsed = 0
     

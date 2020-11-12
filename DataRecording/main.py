@@ -1,3 +1,6 @@
+CHANNEL_NUM = 16
+
+
 import sys
 import os
 import threading
@@ -29,7 +32,7 @@ class RecordingThread(threading.Thread):
                     # считывание данных с гарнитуры
                     while tasks.empty():
                         pass
-                    data.append({'time': time(), 'data': cyHeadset.get_data()})
+                    data.append((time(), cyHeadset.get_data()))
             except Exception as e:
                 print(e)
             '''    
@@ -153,11 +156,19 @@ class Widget(QtWidgets.QWidget):
 
     def saveButtonClicked(self):
         global data
-        f = open(self.currentType + ".txt", 'a')
-        # TODO
-        # Названия колонок
+        file_name = self.currentType + ".csv"
+
+        # Открываем файл для записи измерений
+        f = open(file_name, 'a')
+
+        # Если файл пустой - заполняем значения колонок
+        if os.path.getsize(file_name) == 0:
+            f.write('time,' + ','.join([str(i) for i in range(CHANNEL_NUM)]) + '\n')
+
+        # Записываем данные
         for line in data:
-            f.write(repr(line) + '\n')
+            f.write(str(line[0]) + ',' + line[1] + '\n')
+
         f.close()
 
     def eraseButtonClicked(self):
