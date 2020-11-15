@@ -16,7 +16,7 @@ try:
 except Exception as e:
     print(e)
 
-types = ['Вариант 1', 'Вариант 2', 'Вариант 3']
+types = ['Вариант 1', 'Вариант 2', 'Вариант 3','Вариант 4','Вариант 5']
 imagesDir = 'images'
 data = []
 
