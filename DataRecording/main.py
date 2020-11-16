@@ -1,5 +1,5 @@
 CHANNEL_NUM = 16
-
+RECORDS_FILENAME = 'data.csv'
 import sys
 import os
 import threading
@@ -31,13 +31,14 @@ data = []
 # Размер, под высоту которого будут растягиваться изображения из imagesDir
 imageSize = QtCore.QSize(640, 480)
 
+
 class RecordingThread(threading.Thread):
     def __init__(self):
         super().__init__()
+        self.running = True
 
     def run(self):
-        self.running = True
-        while (1):
+        while 1:
             try:
                 if not self.running:
                     return
@@ -51,13 +52,14 @@ class RecordingThread(threading.Thread):
                 if e == self.exit:
                     return
                 print(e)
-                
+
     def stop(self):
         self.running = False
 
+
 class Widget(QtWidgets.QWidget):
     _isRecording = False
-    
+
     def __init__(self, types=['1', '2', '3']):
         global imagesDir
         super().__init__()
@@ -104,12 +106,9 @@ class Widget(QtWidgets.QWidget):
 
         mainLayout.addLayout(menuLayout)
 
-
-
         self.imageWidget = QtWidgets.QLabel()
         self.imageWidget.setFixedSize(imageSize)
         mainLayout.addWidget(self.imageWidget)
-        
 
     def isRecording(self):
         return self._isRecording
@@ -134,12 +133,12 @@ class Widget(QtWidgets.QWidget):
         if not self.isRecording():
             return
         self._isRecording = False
-        #Отключение от гарнитуры
+        # Отключение от гарнитуры
         global cyHeadset
         cyHeadset = None
         self.recordingThread.stop()
         print('stop recording')
-        
+
         self.resetButton()
         self.imageWidget.clear()
         self.optionWidget = QtWidgets.QWidget()
@@ -164,7 +163,7 @@ class Widget(QtWidgets.QWidget):
 
     def startButtonClicked(self):
         global cyHeadset
-        if cyHeadset == None:
+        if cyHeadset is None:
             try:
                 cyHeadset = EEG()
             except Exception as e:
@@ -212,14 +211,14 @@ class Widget(QtWidgets.QWidget):
 
     def saveButtonClicked(self):
         global data
-        file_name = "data.csv"
+
 
         # Открываем файл для записи измерений (append)
-        f = open(file_name, 'a')
+        f = open(RECORDS_FILENAME, 'a')
 
         # Если файл пустой - заполняем значения колонок
-        if os.path.getsize(file_name) == 0:
-            f.write('class,time,' + ','.join([str(i) for i in range(CHANNEL_NUM)]) + '\n')
+        if os.path.getsize(RECORDS_FILENAME) == 0:
+            f.write('class,time,' + ','.join("F3 FC5 AF3 F7 T7 P7 O1 O2 P8 T8 F8 AF4 FC6 F4".split(' ')) + '\n')
 
         # Записываем данные
         for line in data:
@@ -233,14 +232,13 @@ class Widget(QtWidgets.QWidget):
         # Обносление счетчика
         self.countWidgets[self.getType()].increase()
 
-
     def eraseButtonClicked(self):
         global data
         data = []
 
     def getImagesWidget(self, images):
         w = QtWidgets.QWidget()
-        labels = [QtWidgets.QLabel() for x in range(len(images))]
+        labels = [QtWidgets.QLabel() for _ in range(len(images))]
         pixmaps = [QtGui.QPixmap(image) for image in images]
         for i in range(len(images)):
             labels[i].setPixmap(pixmaps[i])
@@ -277,19 +275,22 @@ class Widget(QtWidgets.QWidget):
     def getTypesCount(self):
         # Получение количества сессий для каждого класса
         #   из файла с данными
-        f = open('data.csv')
-        f.readline()
-        a = f.readline().split(',')
         count = dict.fromkeys(self.types, 0)
-        count[a[0]] += 1
-        lastTime = float(a[1])
-        for line in f:
-            a = line.split(',')
-            if abs(float(a[1]) - lastTime) >= 3:
-                count[a[0]] += 1
-                lastTime = float(a[1])
+        f = open('data.csv', 'a')
+        if os.path.getsize(RECORDS_FILENAME) != 0: # if file has size
+            f.readline()
+            a = f.readline().split(',')
+
+            count[a[0]] += 1
+            lastTime = float(a[1])
+            for line in f:
+                a = line.split(',')
+                if abs(float(a[1]) - lastTime) >= 3:
+                    count[a[0]] += 1
+                    lastTime = float(a[1])
+            f.close()
         return count
-            
+
 
 class CounterWidget(QtWidgets.QWidget):
     def __init__(self, type, oldCount, newCount=0):
@@ -306,7 +307,7 @@ class CounterWidget(QtWidgets.QWidget):
         layout.setAlignment(self.countLabel, QtCore.Qt.AlignRight)
 
         self.setLayout(layout)
-    
+
     def __getCountLabelText(self):
         return '{} + {}'.format(self.oldCount, self.newCount)
 
@@ -328,14 +329,12 @@ class CounterWidget(QtWidgets.QWidget):
         return self.newCount
 
     def increase(self):
-        self.setNewCount(self.getNewCount()+1)
-    
-        
+        self.setNewCount(self.getNewCount() + 1)
 
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     w = Widget(types)
     w.show()
-    
+
     sys.exit(app.exec_())
