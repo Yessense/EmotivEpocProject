@@ -11,15 +11,24 @@ from example_epoc_plus import EEG, tasks
 
 cyHeadset = None
 
+# При isDebugging = True программа не будет реагировать
+#   на отсутствие гарнитуры
+# Иначе, при нажатии на кнопку "Начать", если гарнитуру
+#   не удалось найти, программа не будет отсчитывать время
+isDebugging = False
+
 try:
     cyHeadset = EEG()
 except Exception as e:
     print(e)
 
-types = ['Вариант 1', 'Вариант 2', 'Вариант 3','Вариант 4','Вариант 5']
 imagesDir = 'images'
+imagesFiles = os.listdir(imagesDir)
+# Возможные классы - это все файлы в папке imagesDir без расширения:
+types = [ file[:file.rfind('.')] for file in imagesFiles ]
 data = []
 
+imageSize = QtCore.QSize(1640, 480)
 
 class RecordingThread(threading.Thread):
     def __init__(self):
@@ -35,10 +44,7 @@ class RecordingThread(threading.Thread):
                     data.append((time(), cyHeadset.get_data()))
             except Exception as e:
                 print(e)
-            '''    
-            # sleep будет необходимо убрать
-            sleep(.5)
-            '''
+
 
 
 class Widget(QtWidgets.QWidget):
@@ -48,43 +54,46 @@ class Widget(QtWidgets.QWidget):
         global imagesDir
         super().__init__()
         self.types = types
-        mainLayout = QtWidgets.QVBoxLayout()
+        mainLayout = QtWidgets.QHBoxLayout()
         mainLayout.setAlignment(QtCore.Qt.AlignCenter)
         self.setLayout(mainLayout)
 
         self.radioButtons = [QtWidgets.QRadioButton(str(x)) for x in types]
         groupBox = QtWidgets.QGroupBox('Варианты')
-        buttonsLayout = QtWidgets.QHBoxLayout()
+        buttonsLayout = QtWidgets.QVBoxLayout()
         buttonsLayout.setAlignment(QtCore.Qt.AlignLeft)
         for b in self.radioButtons:
             buttonsLayout.addWidget(b)
         self.radioButtons[0].setChecked(True)
         groupBox.setLayout(buttonsLayout)
-        mainLayout.addWidget(groupBox)
+        
+        menuLayout = QtWidgets.QVBoxLayout()
+        menuLayout.setAlignment(QtCore.Qt.AlignTop)
+        menuLayout.addWidget(groupBox)
 
-        menuLayout = QtWidgets.QHBoxLayout()
+        self.spinBox = QtWidgets.QSpinBox()
+        self.spinBox.setMinimum(1)
+        label = QtWidgets.QLabel("Время:")
+        spinBoxLayout = QtWidgets.QHBoxLayout()
+        spinBoxLayout.addWidget(label)
+        spinBoxLayout.addWidget(self.spinBox)
+        menuLayout.addLayout(spinBoxLayout)
+
         self.startButton = QtWidgets.QPushButton('Начать')
         self.stopButton = QtWidgets.QPushButton('Остановить')
         self.startButton.clicked.connect(self.startButtonClicked)
         self.stopButton.clicked.connect(self.stopButtonClicked)
         self.stopButton.clicked.connect(self.resetButton)
+        
         menuLayout.addWidget(self.startButton)
         menuLayout.addWidget(self.stopButton)
 
-        self.spinBox = QtWidgets.QSpinBox()
-        self.spinBox.setMinimum(1)
-        label = QtWidgets.QLabel("Время:")
-        menuLayout.addWidget(label)
-        menuLayout.addWidget(self.spinBox)
-        menuLayout.setAlignment(self.spinBox, QtCore.Qt.AlignRight)
-        menuLayout.setAlignment(label, QtCore.Qt.AlignRight)
+        
         mainLayout.addLayout(menuLayout)
 
-        images = [('{}/{}'.format(imagesDir, x)) for x in os.listdir(imagesDir)]
-        while (len(images) > len(types)):
-            images.pop()
-
-        mainLayout.addWidget(self.getImagesWidget(images))
+        self.imageWidget = QtWidgets.QLabel()
+        self.imageWidget.setFixedSize(imageSize)
+        mainLayout.addWidget(self.imageWidget)
 
     def isRecording(self):
         return self._isRecording
@@ -99,20 +108,17 @@ class Widget(QtWidgets.QWidget):
             return
         self._isRecording = True
         print('start recording')
-        self.currentType = self.getType()
-        self.timer = QtCore.QTimer(self)
-        self.timer.setSingleShot(True)
-        time = self.spinBox.value() * 1000
-        self.timer.start(time)
-        self.timer.timeout.connect(self.stopRecording)
+        self.countdown(self.spinBox.value())
+        self.stopRecording()
+        return
 
     def stopRecording(self):
         if not self.isRecording():
             return
         self._isRecording = False
         print('stop recording')
-        self.timer.timeout.disconnect()
         self.resetButton()
+        self.imageWidget.clear()
         self.optionWidget = QtWidgets.QWidget()
         self.optionWidget.setWindowTitle('Запись закончена')
         l = QtWidgets.QVBoxLayout()
@@ -140,16 +146,41 @@ class Widget(QtWidgets.QWidget):
                 cyHeadset = EEG()
             except Exception as e:
                 print(e)
-                return
-        self.startButton.setDisabled(True)
+                if not isDebugging:
+                    return
+        self.setImageWidget(self.getType())
+        self.countdown(3)
+        self.startRecording()
+        
+    def countdown(self, seconds):
+        self.startButton.setText(str(seconds))
         timer = QtCore.QTimer(self)
-        self.stopButton.clicked.connect(timer.stop)
-        timer.setSingleShot(True)
-        timer.timeout.connect(self.startRecording)
-        timer.start(3000)
+        timer.timeout.connect(self.decreaseStartButtonTimer)
+        loop = QtCore.QEventLoop()
+        self.timeout.connect(loop.exit)
+
+        timer.start(1000)
+        loop.exec()
+        timer.timeout.disconnect()
+        timer.stop()
+
+    timeout = QtCore.pyqtSignal()
+
+    def decreaseStartButtonTimer(self):
+        try:
+            num = int(self.startButton.text())
+            if num == 0:
+                self.timeout.emit()
+            else:
+                self.startButton.setText(str(num-1))
+            
+        except Exception as e:
+            print(e)
 
     def resetButton(self):
+        self.startButton.setText('Начать')
         self.startButton.setEnabled(True)
+        
 
     def stopButtonClicked(self):
         self.stopRecording()
@@ -170,6 +201,9 @@ class Widget(QtWidgets.QWidget):
             f.write(str(line[0]) + ',' + line[1] + '\n')
 
         f.close()
+
+        # Очистка массива данных
+        data = []
 
     def eraseButtonClicked(self):
         global data
@@ -200,6 +234,16 @@ class Widget(QtWidgets.QWidget):
             layout.setAlignment(labels[-1], QtCore.Qt.AlignCenter)
         w.setLayout(layout)
         return w
+
+    def getImagePath(self, type):
+        for image in imagesFiles:
+            if type == image[:image.rfind('.')]:
+                return imagesDir + '/' + image
+
+    def setImageWidget(self, type):
+        pixmap = QtGui.QPixmap(self.getImagePath(type))
+        pixmap = pixmap.scaledToHeight(imageSize.height(), QtCore.Qt.SmoothTransformation)
+        self.imageWidget.setPixmap(pixmap)
 
 
 if __name__ == '__main__':
