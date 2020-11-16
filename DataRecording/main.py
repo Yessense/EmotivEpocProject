@@ -28,28 +28,36 @@ imagesFiles = os.listdir(imagesDir)
 types = [file[:file.rfind('.')] for file in imagesFiles]
 data = []
 
+# Размер, под высоту которого будут растягиваться изображения из imagesDir
 imageSize = QtCore.QSize(640, 480)
-
 
 class RecordingThread(threading.Thread):
     def __init__(self):
         super().__init__()
 
     def run(self):
+        self.running = True
         while (1):
             try:
+                if not self.running:
+                    return
                 if w.isRecording():
                     # считывание данных с гарнитуры
                     while tasks.empty():
-                        pass
+                        if not self.running:
+                            return
                     data.append((time(), cyHeadset.get_data()))
             except Exception as e:
+                if e == self.exit:
+                    return
                 print(e)
-
+                
+    def stop(self):
+        self.running = False
 
 class Widget(QtWidgets.QWidget):
     _isRecording = False
-
+    
     def __init__(self, types=['1', '2', '3']):
         global imagesDir
         super().__init__()
@@ -88,11 +96,20 @@ class Widget(QtWidgets.QWidget):
         menuLayout.addWidget(self.startButton)
         menuLayout.addWidget(self.stopButton)
 
+        count = self.getTypesCount()
+        self.countWidgets = dict.fromkeys(self.types)
+        for t in self.types:
+            self.countWidgets[t] = CounterWidget(t, count[t], 0)
+            menuLayout.addWidget(self.countWidgets[t])
+
         mainLayout.addLayout(menuLayout)
+
+
 
         self.imageWidget = QtWidgets.QLabel()
         self.imageWidget.setFixedSize(imageSize)
         mainLayout.addWidget(self.imageWidget)
+        
 
     def isRecording(self):
         return self._isRecording
@@ -107,6 +124,8 @@ class Widget(QtWidgets.QWidget):
             return
         self._isRecording = True
         print('start recording')
+        self.recordingThread = RecordingThread()
+        self.recordingThread.start()
         self.countdown(self.spinBox.value())
         self.stopRecording()
         return
@@ -115,7 +134,12 @@ class Widget(QtWidgets.QWidget):
         if not self.isRecording():
             return
         self._isRecording = False
+        #Отключение от гарнитуры
+        global cyHeadset
+        cyHeadset = None
+        self.recordingThread.stop()
         print('stop recording')
+        
         self.resetButton()
         self.imageWidget.clear()
         self.optionWidget = QtWidgets.QWidget()
@@ -149,7 +173,8 @@ class Widget(QtWidgets.QWidget):
                     return
         self.setImageWidget(self.getType())
         self.countdown(3)
-        self.startRecording()
+        if self.countdownIsOk:
+            self.startRecording()
 
     def countdown(self, seconds):
         self.startButton.setText(str(seconds))
@@ -157,6 +182,7 @@ class Widget(QtWidgets.QWidget):
         timer.timeout.connect(self.decreaseStartButtonTimer)
         loop = QtCore.QEventLoop()
         self.timeout.connect(loop.exit)
+        self.countdownIsOk = True
 
         timer.start(1000)
         loop.exec()
@@ -174,7 +200,8 @@ class Widget(QtWidgets.QWidget):
                 self.startButton.setText(str(num - 1))
 
         except Exception as e:
-            print(e)
+            self.countdownIsOk = False
+            self.timeout.emit()
 
     def resetButton(self):
         self.startButton.setText('Начать')
@@ -202,6 +229,10 @@ class Widget(QtWidgets.QWidget):
 
         # Очистка массива данных
         data = []
+
+        # Обносление счетчика
+        self.countWidgets[self.getType()].increase()
+
 
     def eraseButtonClicked(self):
         global data
@@ -243,11 +274,68 @@ class Widget(QtWidgets.QWidget):
         pixmap = pixmap.scaledToHeight(imageSize.height(), QtCore.Qt.SmoothTransformation)
         self.imageWidget.setPixmap(pixmap)
 
+    def getTypesCount(self):
+        # Получение количества сессий для каждого класса
+        #   из файла с данными
+        f = open('data.csv')
+        f.readline()
+        a = f.readline().split(',')
+        count = dict.fromkeys(self.types, 0)
+        count[a[0]] += 1
+        lastTime = float(a[1])
+        for line in f:
+            a = line.split(',')
+            if abs(float(a[1]) - lastTime) >= 3:
+                count[a[0]] += 1
+                lastTime = float(a[1])
+        return count
+            
+
+class CounterWidget(QtWidgets.QWidget):
+    def __init__(self, type, oldCount, newCount=0):
+        super().__init__()
+        self.type = type
+        self.oldCount = oldCount
+        self.newCount = newCount
+
+        self.typeLabel = QtWidgets.QLabel(self.type)
+        self.countLabel = QtWidgets.QLabel(self.__getCountLabelText())
+        layout = QtWidgets.QHBoxLayout()
+        layout.addWidget(self.typeLabel)
+        layout.addWidget(self.countLabel)
+        layout.setAlignment(self.countLabel, QtCore.Qt.AlignRight)
+
+        self.setLayout(layout)
+    
+    def __getCountLabelText(self):
+        return '{} + {}'.format(self.oldCount, self.newCount)
+
+    def __updateCount(self):
+        self.countLabel.setText(self.__getCountLabelText())
+
+    def setOldCount(self, count):
+        self.oldCount = count
+        self.__updateCount()
+
+    def getOldCount(self):
+        return self.oldCount
+
+    def setNewCount(self, count):
+        self.newCount = count
+        self.__updateCount()
+
+    def getNewCount(self):
+        return self.newCount
+
+    def increase(self):
+        self.setNewCount(self.getNewCount()+1)
+    
+        
+
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     w = Widget(types)
     w.show()
-    recordingThread = RecordingThread()
-    recordingThread.start()
+    
     sys.exit(app.exec_())
