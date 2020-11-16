@@ -7,6 +7,7 @@ import sys
 import os
 import threading
 from time import time
+from time import sleep
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from example_epoc_plus import EEG, tasks
@@ -19,13 +20,13 @@ cyHeadset = None
 # Иначе, при нажатии на кнопку "Начать", если гарнитуру
 #   не удалось найти, программа не будет отсчитывать время
 isDebugging = False
-
+'''
 # Получаем сообщение об ошибке, если гарнитура не работает
 try:
     cyHeadset = EEG()
 except Exception as e:
     print(e)
-
+'''
 # Получаем список картинок
 imagesFiles = os.listdir(IMAGES_DIR)
 
@@ -336,9 +337,117 @@ class CounterWidget(QtWidgets.QWidget):
         self.setNewCount(self.getNewCount() + 1)
 
 
-if __name__ == '__main__':
-    app = QtWidgets.QApplication(sys.argv)
-    w = Widget(types)
-    w.show()
+def clearTasks():
+    global tasks
+    while not tasks.empty():
+        tasks.get()
 
-    sys.exit(app.exec_())
+
+
+    
+def test1():
+    # Проверка скорости считывания данных
+    global tasks, cyHeadset
+    if cyHeadset == None:
+        try:
+            cyHeadset = EEG()
+        except Exception as e:
+            print(e)
+            return
+    print('Текущий примерный размер tasks - ' + str(tasks.qsize()))
+    sleep(1)
+    print('Примерный размер tasks после 1 секунды считывания - '
+          + str(tasks.qsize()))
+    sleep(1)
+    print('Примерный размер tasks после 2 секунд считывания - '
+          + str(tasks.qsize()))
+    sleep(1)
+    print('Примерный размер tasks после 3 секунд считывания - '
+          + str(tasks.qsize()))
+    sleep(1)
+    print('Примерный размер tasks после 4 секунд считывания - '
+          + str(tasks.qsize()))
+    sleep(1)
+    print('Примерный размер tasks после 5 секунд считывания - '
+          + str(tasks.qsize()))
+
+
+def test2():
+    # Проверка, как будет влиять на добавление данных
+    #  в tasks удаление переменной cyHeadset
+    global cyHeadset
+    if cyHeadset == None:
+        try:
+            cyHeadset = EEG()
+        except Exception as e:
+            print(e)
+            return
+    print('Текущий примерный размер tasks: ' + str(tasks.qsize()))
+    sleep(.5)
+    cyHeadset = None
+    print('Примерный размер tasks через 0,5 секунды работы cyHeadset: '
+          + str(tasks.qsize()))
+    print('cyHeadset удален')
+    sleep(1)
+    print('Примерный размер tasks через 1 секунду после удаления cyHeadset: '
+          + str(tasks.qsize()))
+
+def test3():
+    # Проверка влияния на процессор постоянного
+    #  считывания данных в data
+    # Необходим test2
+    global cyHeadset
+    cyHeadset = None
+    clearTasks()
+    global cyHeadset
+    try:
+        cyHeadset = EEG()
+    except Exception as e:
+        print(e)
+        return
+    t = RecordingThread()
+    print('Текущий примерный размер tasks - ' + str(tasks.qsize()))
+    t.start()
+    print('Считывание началось, ожидание 10 секунд')
+    sleep(10)
+    print('Текущий примерный размер tasks - ' + str(tasks.qsize()))
+    
+
+def test4():
+    # Проверка объема времени на обработку
+    #  данных из tasks
+    # Допущение: возможно обработать данные из
+    #  tasks через большой промежуток времени после
+    #  их добавления
+    # Требуется test1
+    global tasks, cyHeadset
+    if cyHeadset == None:
+        try:
+            cyHeadset = EEG()
+        except Exception as e:
+            print(e)
+            return
+    print('Считывание данных в течение 10 секунд...')
+    sleep(1)
+    print('Начало обработки 10*128 строк данных из tasks')
+    t1 = time()
+    for _ in range(10*128):
+        cyHeadset.get_data()
+    t2 = time()
+    print('Для обработки потребовалось {} секунд'.format(t2 - t1))
+    
+
+    
+    
+
+if __name__ == '__main__':
+    #test1()
+    #test2()
+    #test3()
+    #test4()
+    
+    #app = QtWidgets.QApplication(sys.argv)
+    #w = Widget(types)
+    #w.show()
+    
+    #sys.exit(app.exec_())
