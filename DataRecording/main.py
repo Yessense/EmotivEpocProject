@@ -14,7 +14,7 @@ cyHeadset = None
 #   на отсутствие гарнитуры
 # Иначе, при нажатии на кнопку "Начать", если гарнитуру
 #   не удалось найти, программа не будет отсчитывать время
-isDebugging = True
+isDebugging = False
 
 try:
     cyHeadset = EEG()
@@ -31,22 +31,29 @@ data = []
 # Размер, под высоту которого будут растягиваться изображения из imagesDir
 imageSize = QtCore.QSize(640, 480)
 
-
 class RecordingThread(threading.Thread):
     def __init__(self):
         super().__init__()
 
     def run(self):
+        self.running = True
         while (1):
             try:
+                if not self.running:
+                    return
                 if w.isRecording():
                     # считывание данных с гарнитуры
                     while tasks.empty():
-                        pass
+                        if not self.running:
+                            return
                     data.append((time(), cyHeadset.get_data()))
             except Exception as e:
+                if e == self.exit:
+                    return
                 print(e)
-
+                
+    def stop(self):
+        self.running = False
 
 class Widget(QtWidgets.QWidget):
     _isRecording = False
@@ -117,18 +124,20 @@ class Widget(QtWidgets.QWidget):
             return
         self._isRecording = True
         print('start recording')
+        self.recordingThread = RecordingThread()
+        self.recordingThread.start()
         self.countdown(self.spinBox.value())
         self.stopRecording()
         return
 
     def stopRecording(self):
-      try:
         if not self.isRecording():
             return
         self._isRecording = False
         #Отключение от гарнитуры
         global cyHeadset
         cyHeadset = None
+        self.recordingThread.stop()
         print('stop recording')
         
         self.resetButton()
@@ -152,8 +161,6 @@ class Widget(QtWidgets.QWidget):
         self.optionWidget.setWindowModality(QtCore.Qt.ApplicationModal)
         self.optionWidget.setFixedSize(320, 120)
         self.optionWidget.show()
-      except Exception as e:
-          print(e)
 
     def startButtonClicked(self):
         global cyHeadset
@@ -330,6 +337,5 @@ if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     w = Widget(types)
     w.show()
-    recordingThread = RecordingThread()
-    recordingThread.start()
+    
     sys.exit(app.exec_())
