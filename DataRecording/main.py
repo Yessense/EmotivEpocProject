@@ -1,6 +1,5 @@
 CHANNEL_NUM = 16
 
-
 import sys
 import os
 import threading
@@ -24,11 +23,13 @@ except Exception as e:
 
 imagesDir = 'images'
 imagesFiles = os.listdir(imagesDir)
+
 # Возможные классы - это все файлы в папке imagesDir без расширения:
-types = [ file[:file.rfind('.')] for file in imagesFiles ]
+types = [file[:file.rfind('.')] for file in imagesFiles]
 data = []
 
-imageSize = QtCore.QSize(1640, 480)
+imageSize = QtCore.QSize(640, 480)
+
 
 class RecordingThread(threading.Thread):
     def __init__(self):
@@ -44,7 +45,6 @@ class RecordingThread(threading.Thread):
                     data.append((time(), cyHeadset.get_data()))
             except Exception as e:
                 print(e)
-
 
 
 class Widget(QtWidgets.QWidget):
@@ -66,7 +66,7 @@ class Widget(QtWidgets.QWidget):
             buttonsLayout.addWidget(b)
         self.radioButtons[0].setChecked(True)
         groupBox.setLayout(buttonsLayout)
-        
+
         menuLayout = QtWidgets.QVBoxLayout()
         menuLayout.setAlignment(QtCore.Qt.AlignTop)
         menuLayout.addWidget(groupBox)
@@ -84,11 +84,10 @@ class Widget(QtWidgets.QWidget):
         self.startButton.clicked.connect(self.startButtonClicked)
         self.stopButton.clicked.connect(self.stopButtonClicked)
         self.stopButton.clicked.connect(self.resetButton)
-        
+
         menuLayout.addWidget(self.startButton)
         menuLayout.addWidget(self.stopButton)
 
-        
         mainLayout.addLayout(menuLayout)
 
         self.imageWidget = QtWidgets.QLabel()
@@ -151,7 +150,7 @@ class Widget(QtWidgets.QWidget):
         self.setImageWidget(self.getType())
         self.countdown(3)
         self.startRecording()
-        
+
     def countdown(self, seconds):
         self.startButton.setText(str(seconds))
         timer = QtCore.QTimer(self)
@@ -172,33 +171,32 @@ class Widget(QtWidgets.QWidget):
             if num == 0:
                 self.timeout.emit()
             else:
-                self.startButton.setText(str(num-1))
-            
+                self.startButton.setText(str(num - 1))
+
         except Exception as e:
             print(e)
 
     def resetButton(self):
         self.startButton.setText('Начать')
         self.startButton.setEnabled(True)
-        
 
     def stopButtonClicked(self):
         self.stopRecording()
 
     def saveButtonClicked(self):
         global data
-        file_name = self.currentType + ".csv"
+        file_name = "data.csv"
 
-        # Открываем файл для записи измерений
+        # Открываем файл для записи измерений (append)
         f = open(file_name, 'a')
 
         # Если файл пустой - заполняем значения колонок
         if os.path.getsize(file_name) == 0:
-            f.write('time,' + ','.join([str(i) for i in range(CHANNEL_NUM)]) + '\n')
+            f.write('class,time,' + ','.join([str(i) for i in range(CHANNEL_NUM)]) + '\n')
 
         # Записываем данные
         for line in data:
-            f.write(str(line[0]) + ',' + line[1] + '\n')
+            f.write(self.getType() + ',' + str(line[0]) + ',' + line[1] + '\n')
 
         f.close()
 
