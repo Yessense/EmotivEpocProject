@@ -47,10 +47,9 @@ class RecordingThread(threading.Thread):
                     while tasks.empty():
                         if not self.running:
                             return
-                    data.append((time(), cyHeadset.get_data()))
+                    if cyHeadset != None:
+                        data.append((time(), cyHeadset.get_data()))
             except Exception as e:
-                if e == self.exit:
-                    return
                 print(e)
 
     def stop(self):
@@ -133,10 +132,10 @@ class Widget(QtWidgets.QWidget):
         if not self.isRecording():
             return
         self._isRecording = False
+        self.recordingThread.stop()
         # Отключение от гарнитуры
         global cyHeadset
         cyHeadset = None
-        self.recordingThread.stop()
         print('stop recording')
 
         self.resetButton()
@@ -276,7 +275,7 @@ class Widget(QtWidgets.QWidget):
         # Получение количества сессий для каждого класса
         #   из файла с данными
         count = dict.fromkeys(self.types, 0)
-        f = open('data.csv', 'a')
+        f = open(RECORDS_FILENAME)
         if os.path.getsize(RECORDS_FILENAME) != 0: # if file has size
             f.readline()
             a = f.readline().split(',')
