@@ -1,5 +1,8 @@
-CHANNEL_NUM = 16
+# constants
 RECORDS_FILENAME = 'data.csv'
+IMAGES_DIR = 'images'
+
+# imports
 import sys
 import os
 import threading
@@ -8,6 +11,7 @@ from time import time
 from PyQt5 import QtCore, QtGui, QtWidgets
 from example_epoc_plus import EEG, tasks
 
+# EEG class
 cyHeadset = None
 
 # При isDebugging = True программа не будет реагировать
@@ -16,19 +20,20 @@ cyHeadset = None
 #   не удалось найти, программа не будет отсчитывать время
 isDebugging = False
 
+# Получаем сообщение об ошибке, если гарнитура не работает
 try:
     cyHeadset = EEG()
 except Exception as e:
     print(e)
 
-imagesDir = 'images'
-imagesFiles = os.listdir(imagesDir)
+# Получаем список картинок
+imagesFiles = os.listdir(IMAGES_DIR)
 
-# Возможные классы - это все файлы в папке imagesDir без расширения:
+# Возможные классы - это все файлы в папке IMAGES_DIR без расширения:
 types = [file[:file.rfind('.')] for file in imagesFiles]
 data = []
 
-# Размер, под высоту которого будут растягиваться изображения из imagesDir
+# Размер, под высоту которого будут растягиваться изображения из IMAGES_DIR
 imageSize = QtCore.QSize(640, 480)
 
 
@@ -47,7 +52,7 @@ class RecordingThread(threading.Thread):
                     while tasks.empty():
                         if not self.running:
                             return
-                    if cyHeadset != None:
+                    if cyHeadset is not None:
                         data.append((time(), cyHeadset.get_data()))
             except Exception as e:
                 print(e)
@@ -60,8 +65,9 @@ class Widget(QtWidgets.QWidget):
     _isRecording = False
 
     def __init__(self, types=['1', '2', '3']):
-        global imagesDir
+        global IMAGES_DIR
         super().__init__()
+
         self.types = types
         mainLayout = QtWidgets.QHBoxLayout()
         mainLayout.setAlignment(QtCore.Qt.AlignCenter)
@@ -210,12 +216,11 @@ class Widget(QtWidgets.QWidget):
 
     def saveButtonClicked(self):
         global data
-
-
         # Открываем файл для записи измерений (append)
         f = open(RECORDS_FILENAME, 'a')
 
         # Если файл пустой - заполняем значения колонок
+        # Значения каналов "F3 FC5 AF3 F7 T7 P7 O1 O2 P8 T8 F8 AF4 FC6 F4"
         if os.path.getsize(RECORDS_FILENAME) == 0:
             f.write('class,time,' + ','.join("F3 FC5 AF3 F7 T7 P7 O1 O2 P8 T8 F8 AF4 FC6 F4".split(' ')) + '\n')
 
@@ -264,7 +269,7 @@ class Widget(QtWidgets.QWidget):
     def getImagePath(self, type):
         for image in imagesFiles:
             if type == image[:image.rfind('.')]:
-                return imagesDir + '/' + image
+                return IMAGES_DIR + '/' + image
 
     def setImageWidget(self, type):
         pixmap = QtGui.QPixmap(self.getImagePath(type))
@@ -276,7 +281,7 @@ class Widget(QtWidgets.QWidget):
         #   из файла с данными
         count = dict.fromkeys(self.types, 0)
         f = open(RECORDS_FILENAME)
-        if os.path.getsize(RECORDS_FILENAME) != 0: # if file has size
+        if os.path.getsize(RECORDS_FILENAME) != 0:  # if file has size
             f.readline()
             a = f.readline().split(',')
 
