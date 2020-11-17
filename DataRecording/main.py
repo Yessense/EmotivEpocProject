@@ -19,7 +19,7 @@ cyHeadset = None
 #   на отсутствие гарнитуры
 # Иначе, при нажатии на кнопку "Начать", если гарнитуру
 #   не удалось найти, программа не будет отсчитывать время
-isDebugging = True
+isDebugging = False
 
 # Получаем сообщение об ошибке, если гарнитура не работает
 try:
@@ -113,6 +113,9 @@ class Widget(QtWidgets.QWidget):
         self.countdown(self.spinBox.value())
         self.stopRecording()
 
+    def get_iter_class_number(self):
+        return ""
+
     def stopRecording(self):
         if not self.isRecording():
             return
@@ -120,7 +123,7 @@ class Widget(QtWidgets.QWidget):
         # while not tasks.empty():
         if not isDebugging:
             for _ in range(128 * self.spinBox.value()):
-                self.data.append((time(), cyHeadset.get_data()))
+                self.data.append((self.get_iter_class_number(), time(), cyHeadset.get_data()))
         self._isRecording = False
         print('stop recording')
 
@@ -198,6 +201,9 @@ class Widget(QtWidgets.QWidget):
     def stopButtonClicked(self):
         self.stopRecording()
 
+
+
+
     def saveButtonClicked(self):
         # Открываем файл для записи измерений (append)
         f = open(RECORDS_FILENAME, 'a')
@@ -205,11 +211,11 @@ class Widget(QtWidgets.QWidget):
         # Если файл пустой - заполняем значения колонок
         # Значения каналов "F3 FC5 AF3 F7 T7 P7 O1 O2 P8 T8 F8 AF4 FC6 F4"
         if os.path.getsize(RECORDS_FILENAME) == 0:
-            f.write('class,time,' + ','.join("F3 FC5 AF3 F7 T7 P7 O1 O2 P8 T8 F8 AF4 FC6 F4".split(' ')) + '\n')
+            f.write('class,iter,time,' + ','.join("F3 FC5 AF3 F7 T7 P7 O1 O2 P8 T8 F8 AF4 FC6 F4".split(' ')) + '\n')
 
         # Записываем данные
         for line in self.data:
-            f.write(self.getType() + ',' + str(line[0]) + ',' + line[1] + '\n')
+            f.write(self.getType() + str(line[0]) + ',' + str(line[1])  + ','  + line[1] + '\n')
 
         f.close()
 
@@ -262,7 +268,7 @@ class Widget(QtWidgets.QWidget):
         # Получение количества сессий для каждого класса
         #   из файла с данными
         count = dict.fromkeys(self.types, 0)
-        f = open(RECORDS_FILENAME)
+        f = open(RECORDS_FILENAME,'a')
         if os.path.getsize(RECORDS_FILENAME) != 0:  # if file has size
             f.readline()
             a = f.readline().split(',')
