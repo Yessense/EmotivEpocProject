@@ -1,7 +1,7 @@
 # constants
 RECORDS_FILENAME = 'data.csv'
 IMAGES_DIR = 'images'
-
+TIME_COLUMN = 2
 # imports
 import sys
 import os
@@ -114,7 +114,8 @@ class Widget(QtWidgets.QWidget):
         self.stopRecording()
 
     def get_iter_class_number(self):
-        return ""
+        w = self.countWidgets[self.getType()]
+        return w.getOldCount() + w.getNewCount()
 
     def stopRecording(self):
         if not self.isRecording():
@@ -122,8 +123,11 @@ class Widget(QtWidgets.QWidget):
         self.data = []
         # while not tasks.empty():
         if not isDebugging:
-            for _ in range(128 * self.spinBox.value()):
-                self.data.append((self.get_iter_class_number(), time(), cyHeadset.get_data()))
+            if tasks.qsize() == 0:
+                print('No data!!!')
+            else:
+                for _ in range(128 * self.spinBox.value()):
+                    self.data.append((self.get_iter_class_number(), time(), cyHeadset.get_data()))
         self._isRecording = False
         print('stop recording')
 
@@ -215,7 +219,7 @@ class Widget(QtWidgets.QWidget):
 
         # Записываем данные
         for line in self.data:
-            f.write(self.getType() + str(line[0]) + ',' + str(line[1])  + ','  + line[1] + '\n')
+            f.write(self.getType() +',' + str(line[0]) + ',' + str(line[1])  + ','  + line[2] + '\n')
 
         f.close()
 
@@ -269,17 +273,19 @@ class Widget(QtWidgets.QWidget):
         #   из файла с данными
         count = dict.fromkeys(self.types, 0)
         f = open(RECORDS_FILENAME,'a')
+        f.close()
         if os.path.getsize(RECORDS_FILENAME) != 0:  # if file has size
+            f = open(RECORDS_FILENAME)
             f.readline()
             a = f.readline().split(',')
 
             count[a[0]] += 1
-            lastTime = float(a[1])
+            lastTime = float(a[2])
             for line in f:
                 a = line.split(',')
-                if abs(float(a[1]) - lastTime) >= 3:
+                if abs(float(a[TIME_COLUMN]) - lastTime) >= 3:
                     count[a[0]] += 1
-                    lastTime = float(a[1])
+                    lastTime = float(a[TIME_COLUMN])
             f.close()
         return count
 
