@@ -19,47 +19,22 @@ cyHeadset = None
 #   на отсутствие гарнитуры
 # Иначе, при нажатии на кнопку "Начать", если гарнитуру
 #   не удалось найти, программа не будет отсчитывать время
-isDebugging = False
-'''
+isDebugging = True
+
 # Получаем сообщение об ошибке, если гарнитура не работает
 try:
     cyHeadset = EEG()
 except Exception as e:
     print(e)
-'''
+
 # Получаем список картинок
 imagesFiles = os.listdir(IMAGES_DIR)
 
 # Возможные классы - это все файлы в папке IMAGES_DIR без расширения:
 types = [file[:file.rfind('.')] for file in imagesFiles]
-data = []
 
 # Размер, под высоту которого будут растягиваться изображения из IMAGES_DIR
 imageSize = QtCore.QSize(640, 480)
-
-
-class RecordingThread(threading.Thread):
-    def __init__(self):
-        super().__init__()
-        self.running = True
-
-    def run(self):
-        while 1:
-            try:
-                if not self.running:
-                    return
-                if w.isRecording():
-                    # считывание данных с гарнитуры
-                    while tasks.empty():
-                        if not self.running:
-                            return
-                    if cyHeadset is not None:
-                        data.append((time(), cyHeadset.get_data()))
-            except Exception as e:
-                print(e)
-
-    def stop(self):
-        self.running = False
 
 
 class Widget(QtWidgets.QWidget):
@@ -129,20 +104,24 @@ class Widget(QtWidgets.QWidget):
             return
         self._isRecording = True
         print('start recording')
-        self.recordingThread = RecordingThread()
-        self.recordingThread.start()
+        
+        sleep(.1) # Синхронизация с tasksCleaner
+        
+        # Очистка данных, которые были в считаны с гарнитуры до этого
+        clearTasks()
+        
         self.countdown(self.spinBox.value())
         self.stopRecording()
-        return
 
     def stopRecording(self):
         if not self.isRecording():
             return
+        self.data = []
+        # while not tasks.empty():
+        if not isDebugging:
+            for _ in range(128 * self.spinBox.value()):
+                self.data.append((time(), cyHeadset.get_data()))
         self._isRecording = False
-        self.recordingThread.stop()
-        # Отключение от гарнитуры
-        global cyHeadset
-        cyHeadset = None
         print('stop recording')
 
         self.resetButton()
@@ -168,6 +147,7 @@ class Widget(QtWidgets.QWidget):
         self.optionWidget.show()
 
     def startButtonClicked(self):
+        self.startButton.setDisabled(True)
         global cyHeadset
         if cyHeadset is None:
             try:
@@ -175,11 +155,14 @@ class Widget(QtWidgets.QWidget):
             except Exception as e:
                 print(e)
                 if not isDebugging:
+                    self.resetButton()
                     return
         self.setImageWidget(self.getType())
         self.countdown(3)
         if self.countdownIsOk:
             self.startRecording()
+        else:
+            self.resetButton()
 
     def countdown(self, seconds):
         self.startButton.setText(str(seconds))
@@ -216,7 +199,6 @@ class Widget(QtWidgets.QWidget):
         self.stopRecording()
 
     def saveButtonClicked(self):
-        global data
         # Открываем файл для записи измерений (append)
         f = open(RECORDS_FILENAME, 'a')
 
@@ -226,20 +208,19 @@ class Widget(QtWidgets.QWidget):
             f.write('class,time,' + ','.join("F3 FC5 AF3 F7 T7 P7 O1 O2 P8 T8 F8 AF4 FC6 F4".split(' ')) + '\n')
 
         # Записываем данные
-        for line in data:
+        for line in self.data:
             f.write(self.getType() + ',' + str(line[0]) + ',' + line[1] + '\n')
 
         f.close()
 
         # Очистка массива данных
-        data = []
+        self.data = []
 
         # Обносление счетчика
         self.countWidgets[self.getType()].increase()
 
     def eraseButtonClicked(self):
-        global data
-        data = []
+        self.data = []
 
     def getImagesWidget(self, images):
         w = QtWidgets.QWidget()
@@ -342,112 +323,19 @@ def clearTasks():
     while not tasks.empty():
         tasks.get()
 
-
-
-    
-def test1():
-    # Проверка скорости считывания данных
-    global tasks, cyHeadset
-    if cyHeadset == None:
-        try:
-            cyHeadset = EEG()
-        except Exception as e:
-            print(e)
-            return
-    print('Текущий примерный размер tasks - ' + str(tasks.qsize()))
-    sleep(1)
-    print('Примерный размер tasks после 1 секунды считывания - '
-          + str(tasks.qsize()))
-    sleep(1)
-    print('Примерный размер tasks после 2 секунд считывания - '
-          + str(tasks.qsize()))
-    sleep(1)
-    print('Примерный размер tasks после 3 секунд считывания - '
-          + str(tasks.qsize()))
-    sleep(1)
-    print('Примерный размер tasks после 4 секунд считывания - '
-          + str(tasks.qsize()))
-    sleep(1)
-    print('Примерный размер tasks после 5 секунд считывания - '
-          + str(tasks.qsize()))
-
-
-def test2():
-    # Проверка, как будет влиять на добавление данных
-    #  в tasks удаление переменной cyHeadset
-    global cyHeadset
-    if cyHeadset == None:
-        try:
-            cyHeadset = EEG()
-        except Exception as e:
-            print(e)
-            return
-    print('Текущий примерный размер tasks: ' + str(tasks.qsize()))
-    sleep(.5)
-    cyHeadset = None
-    print('Примерный размер tasks через 0,5 секунды работы cyHeadset: '
-          + str(tasks.qsize()))
-    print('cyHeadset удален')
-    sleep(1)
-    print('Примерный размер tasks через 1 секунду после удаления cyHeadset: '
-          + str(tasks.qsize()))
-
-def test3():
-    # Проверка влияния на процессор постоянного
-    #  считывания данных в data
-    # Необходим test2
-    global cyHeadset
-    cyHeadset = None
-    clearTasks()
-    global cyHeadset
-    try:
-        cyHeadset = EEG()
-    except Exception as e:
-        print(e)
-        return
-    t = RecordingThread()
-    print('Текущий примерный размер tasks - ' + str(tasks.qsize()))
-    t.start()
-    print('Считывание началось, ожидание 10 секунд')
-    sleep(10)
-    print('Текущий примерный размер tasks - ' + str(tasks.qsize()))
-    
-
-def test4():
-    # Проверка объема времени на обработку
-    #  данных из tasks
-    # Допущение: возможно обработать данные из
-    #  tasks через большой промежуток времени после
-    #  их добавления
-    # Требуется test1
-    global tasks, cyHeadset
-    if cyHeadset == None:
-        try:
-            cyHeadset = EEG()
-        except Exception as e:
-            print(e)
-            return
-    print('Считывание данных в течение 10 секунд...')
-    sleep(1)
-    print('Начало обработки 10*128 строк данных из tasks')
-    t1 = time()
-    for _ in range(10*128):
-        cyHeadset.get_data()
-    t2 = time()
-    print('Для обработки потребовалось {} секунд'.format(t2 - t1))
-    
-
-    
+def clearTasksIfNotRecording():
+    if not w.isRecording():
+        clearTasks()
     
 
 if __name__ == '__main__':
-    #test1()
-    #test2()
-    #test3()
-    #test4()
+    app = QtWidgets.QApplication(sys.argv)
+    w = Widget(types)
+    w.show()
+
+    # Очищает очередь tasks раз в секунду, если не идет запись
+    tasksCleaner = QtCore.QTimer(w)
+    tasksCleaner.timeout.connect(clearTasksIfNotRecording)
+    tasksCleaner.start(1000)
     
-    #app = QtWidgets.QApplication(sys.argv)
-    #w = Widget(types)
-    #w.show()
-    
-    #sys.exit(app.exec_())
+    sys.exit(app.exec_())
