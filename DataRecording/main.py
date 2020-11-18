@@ -1,13 +1,18 @@
 # constants
 RECORDS_FILENAME = 'data.csv'
 IMAGES_DIR = 'images'
-TIME_COLUMN = 2
+ITER_COLUMN = 'iter'
+CLASS_COLUMN = 'class'
+SENSORS = 'F3 FC5 AF3 F7 T7 P7 O1 O2 P8 T8 F8 AF4 FC6 F4'.split(' ')
+CSV_LABELS = [CLASS_COLUMN, ITER_COLUMN]
+CSV_LABELS.extend(SENSORS)
 # imports
 import sys
 import os
 import threading
 from time import time
 from time import sleep
+from random import choice
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from example_epoc_plus import EEG, tasks
@@ -15,10 +20,8 @@ from example_epoc_plus import EEG, tasks
 # EEG class
 cyHeadset = None
 
-# При isDebugging = True программа не будет реагировать
-#   на отсутствие гарнитуры
-# Иначе, при нажатии на кнопку "Начать", если гарнитуру
-#   не удалось найти, программа не будет отсчитывать время
+# При isDebugging = True программа предполагает, что подключение
+#  гарнитуры не обязательно, и будет игнорировать ее отсутствие
 isDebugging = False
 
 # Получаем сообщение об ошибке, если гарнитура не работает
@@ -79,11 +82,28 @@ class Widget(QtWidgets.QWidget):
         menuLayout.addWidget(self.startButton)
         menuLayout.addWidget(self.stopButton)
 
+        # Поле, в котором задается количество сессий при случайном выборе
+        self.randomSessionCountInput = QtWidgets.QSpinBox()
+        self.randomSessionCountInput.setValue(10)
+        randomCountLabel = QtWidgets.QLabel('Случайные сессии:')
+        randomCountInputLayout = QtWidgets.QHBoxLayout()
+        randomCountInputLayout.addWidget(randomCountLabel)
+        randomCountInputLayout.addWidget(self.randomSessionCountInput)
+        randomCountInputLayout.setAlignment(self.randomSessionCountInput,
+                                            QtCore.Qt.AlignRight)
+        self.randomStartButton = QtWidgets.QPushButton('Случайный класс')
+        self.randomStartButton.clicked.connect(self.randomStartButtonClicked)
+
+        menuLayout.addLayout(randomCountInputLayout)
+        menuLayout.addWidget(self.randomStartButton)
+
         count = self.getTypesCount()
         self.countWidgets = dict.fromkeys(self.types)
         for t in self.types:
             self.countWidgets[t] = CounterWidget(t, count[t], 0)
             menuLayout.addWidget(self.countWidgets[t])
+        
+
 
         mainLayout.addLayout(menuLayout)
 
@@ -98,6 +118,14 @@ class Widget(QtWidgets.QWidget):
         for i in range(len(self.radioButtons)):
             if self.radioButtons[i].isChecked():
                 return self.types[i]
+
+    def setType(self, type):
+        if self.types.count(type) == 0:
+            return
+        for i in range(len(self.radioButtons)):
+            if self.radioButtons[i].text() == type:
+                self.radioButtons[i].setChecked(True)
+                return
 
     def startRecording(self):
         if self.isRecording():
@@ -114,7 +142,10 @@ class Widget(QtWidgets.QWidget):
         self.stopRecording()
 
     def get_iter_class_number(self):
-        w = self.countWidgets[self.getType()]
+        return self.getItersCount(self.getType())
+
+    def getItersCount(self, type):
+        w = self.countWidgets[type]
         return w.getOldCount() + w.getNewCount()
 
     def stopRecording(self):
@@ -127,7 +158,9 @@ class Widget(QtWidgets.QWidget):
                 print('No data!!!')
             else:
                 for _ in range(128 * self.spinBox.value()):
-                    self.data.append((self.get_iter_class_number(), time(), cyHeadset.get_data()))
+                    a = [self.getType(), str(self.get_iter_class_number())]
+                    a.extend([str(value) for value in cyHeadset.get_data()])
+                    self.data.append(a)
         self._isRecording = False
         print('stop recording')
 
@@ -155,6 +188,7 @@ class Widget(QtWidgets.QWidget):
 
     def startButtonClicked(self):
         self.startButton.setDisabled(True)
+        self.randomStartButton.setDisabled(True)
         global cyHeadset
         if cyHeadset is None:
             try:
@@ -170,6 +204,26 @@ class Widget(QtWidgets.QWidget):
             self.startRecording()
         else:
             self.resetButton()
+
+    def randomStartButtonClicked(self):
+        counts = dict.fromkeys(self.types)
+        for t in self.types:
+            counts[t] = self.getItersCount(t)
+        maxCount = self.randomSessionCountInput.value()
+        allMax = True
+        for t in self.types:
+            if counts[t] < maxCount:
+                allMax = False
+                break
+        if allMax:
+            return
+        t = choice(self.types)
+        while counts[t] >= maxCount:
+            t = choice(self.types)
+        self.setType(t)
+        self.startButtonClicked()
+
+                
 
     def countdown(self, seconds):
         self.startButton.setText(str(seconds))
@@ -201,6 +255,7 @@ class Widget(QtWidgets.QWidget):
     def resetButton(self):
         self.startButton.setText('Начать')
         self.startButton.setEnabled(True)
+        self.randomStartButton.setEnabled(True)
 
     def stopButtonClicked(self):
         self.stopRecording()
@@ -213,13 +268,12 @@ class Widget(QtWidgets.QWidget):
         f = open(RECORDS_FILENAME, 'a')
 
         # Если файл пустой - заполняем значения колонок
-        # Значения каналов "F3 FC5 AF3 F7 T7 P7 O1 O2 P8 T8 F8 AF4 FC6 F4"
         if os.path.getsize(RECORDS_FILENAME) == 0:
-            f.write('class,iter,time,' + ','.join("F3 FC5 AF3 F7 T7 P7 O1 O2 P8 T8 F8 AF4 FC6 F4".split(' ')) + '\n')
+            f.write(','.join(CSV_LABELS) + '\n')
 
         # Записываем данные
         for line in self.data:
-            f.write(self.getType() +',' + str(line[0]) + ',' + str(line[1])  + ','  + line[2] + '\n')
+            f.write(','.join(line) + '\n')
 
         f.close()
 
@@ -272,21 +326,37 @@ class Widget(QtWidgets.QWidget):
         # Получение количества сессий для каждого класса
         #   из файла с данными
         count = dict.fromkeys(self.types, 0)
-        f = open(RECORDS_FILENAME,'a')
-        f.close()
-        if os.path.getsize(RECORDS_FILENAME) != 0:  # if file has size
-            f = open(RECORDS_FILENAME)
-            f.readline()
-            a = f.readline().split(',')
-
-            count[a[0]] += 1
-            lastTime = float(a[2])
-            for line in f:
-                a = line.split(',')
-                if abs(float(a[TIME_COLUMN]) - lastTime) >= 3:
-                    count[a[0]] += 1
-                    lastTime = float(a[TIME_COLUMN])
+        if not os.path.exists(RECORDS_FILENAME):
+            f = open(RECORDS_FILENAME,'a')
             f.close()
+    
+        if os.path.getsize(RECORDS_FILENAME) != 0:  # if file has size
+            try:
+                f = open(RECORDS_FILENAME)
+                labels = f.readline().split(',')
+                a = f.readline().split(',')
+
+                classCol = labels.index('class')
+                iterCol = labels.index('iter')
+                while self.types.count(a[classCol]) == 0 :
+                    a = f.readline().split(',')
+                count[a[classCol]] += 1
+                lastIter = int(a[iterCol])
+                lastClass = a[classCol]
+                for line in f:
+                    a = line.split(',')
+                    if self.types.count(a[classCol]) == 0:
+                        continue
+                    if a[classCol] == lastClass:
+                        if a[iterCol] != lastIter:
+                            count[a[classCol]] += 1
+                    else:
+                        count[a[classCol]] += 1
+                    lastClass = a[classCol]
+                    lastIter = a[iterCol]
+                f.close()
+            except EOFError:
+                pass
         return count
 
 
@@ -339,6 +409,25 @@ def clearTasksIfNotRecording():
     if not w.isRecording():
         clearTasks()
     
+def checkRecording():
+    # Если за 0,2 секунды не считалось ничего, вывести ошибку
+    count = tasks.qsize()
+    if count != 0:
+        return
+    sleep(.1)
+    if count != 0:
+        return
+    sleep(.1)
+    if count != 0:
+        return
+    if not isDebugging:
+        print('Данные не считываются!')
+
+      
+def recordingRestored():
+    global isRecordingOk
+    print('restored')
+    isRecordingOk = True
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
@@ -349,5 +438,10 @@ if __name__ == '__main__':
     tasksCleaner = QtCore.QTimer(w)
     tasksCleaner.timeout.connect(clearTasksIfNotRecording)
     tasksCleaner.start(1000)
+
+    # Проверяет, считываются ли данные с гарнитуры
+    recordingChecker = QtCore.QTimer(w)
+    recordingChecker.timeout.connect(checkRecording)
+    recordingChecker.start(500)
     
     sys.exit(app.exec_())
