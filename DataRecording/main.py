@@ -159,7 +159,8 @@ class Widget(QtWidgets.QWidget):
             else:
                 for _ in range(128 * self.spinBox.value()):
                     a = [self.getType(), str(self.get_iter_class_number())]
-                    a.extend([str(value) for value in cyHeadset.get_data()])
+                    a.extend([str(value) for value in eval(cyHeadset.get_data())])
+                        # [eval(value) for value in cyHeadset.get_data()])
                     self.data.append(a)
         self._isRecording = False
         print('stop recording')
@@ -415,9 +416,11 @@ def checkRecording():
     if count != 0:
         return
     sleep(.1)
+    count = tasks.qsize()
     if count != 0:
         return
     sleep(.1)
+    count = tasks.qsize()
     if count != 0:
         return
     if not isDebugging:
