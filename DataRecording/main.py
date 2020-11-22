@@ -160,7 +160,6 @@ class Widget(QtWidgets.QWidget):
                 for _ in range(128 * self.spinBox.value()):
                     a = [self.getType(), str(self.get_iter_class_number())]
                     a.extend([str(value) for value in eval(cyHeadset.get_data())])
-                        # [eval(value) for value in cyHeadset.get_data()])
                     self.data.append(a)
         self._isRecording = False
         print('stop recording')
