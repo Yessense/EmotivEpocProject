@@ -6,10 +6,12 @@ CLASS_COLUMN = 'class'
 SENSORS = 'F3 FC5 AF3 F7 T7 P7 O1 O2 P8 T8 F8 AF4 FC6 F4'.split(' ')
 CSV_LABELS = [CLASS_COLUMN, ITER_COLUMN]
 CSV_LABELS.extend(SENSORS)
+DEFAULT_RECORDING_TIME = 5
+HEADSET_FREQUENCY = 128
 # imports
 import sys
 import os
-import threading
+from threading import Thread
 from time import time
 from time import sleep
 from random import choice
@@ -20,8 +22,9 @@ from example_epoc_plus import EEG, tasks
 # EEG class
 cyHeadset = None
 
-# При isDebugging = True программа предполагает, что подключение
-#  гарнитуры не обязательно, и будет игнорировать ее отсутствие
+# При isDebugging = True программа игнорирует отсутсвтие
+# гарнитуры и не считывает с нее данные (даже если получилось
+# подключиться)
 isDebugging = False
 
 # Получаем сообщение об ошибке, если гарнитура не работает
@@ -40,13 +43,54 @@ types = [file[:file.rfind('.')] for file in imagesFiles]
 imageSize = QtCore.QSize(640, 480)
 
 
+def dataReceived(value):
+    pass
+
+
+def addTextToWidget(text):
+    """Добавляет в виджет новую строку текста"""
+
+    w.textWidget.setText(w.textWidget.toPlainText() + text + '\n')
+
+
+class RecordingThread(Thread):
+    def __init__(self, seconds, type, iterNumber):
+        super().__init__()
+        self.seconds = seconds
+        self.type = type
+        self.iterNumber = iterNumber
+        self.data = []
+        self._stopRecording = False
+
+    def stopRecording(self):
+        self._stopRecording = True
+
+    def run(self):
+        global cyHeadset
+        for _ in range(self.seconds * HEADSET_FREQUENCY):
+            if self._stopRecording:
+                break
+            if not isDebugging:
+                line = [type, str(self.iterNumber)]
+                line.extend([str(value) for value
+                             in eval(cyHeadset.get_data())])
+                self.data.append(line)
+                dataReceived(line)
+
+    def getData(self):
+        return self.data
+
+
 class Widget(QtWidgets.QWidget):
     _isRecording = False
+    timeout = QtCore.pyqtSignal()
+    recordingInterrupted = QtCore.pyqtSignal()
 
     def __init__(self, types=['1', '2', '3']):
         global IMAGES_DIR
         super().__init__()
 
+        self.recordingThread = None
         self.types = types
         mainLayout = QtWidgets.QHBoxLayout()
         mainLayout.setAlignment(QtCore.Qt.AlignCenter)
@@ -67,6 +111,8 @@ class Widget(QtWidgets.QWidget):
 
         self.spinBox = QtWidgets.QSpinBox()
         self.spinBox.setMinimum(1)
+        self.spinBox.setValue(DEFAULT_RECORDING_TIME)
+
         label = QtWidgets.QLabel("Время:")
         spinBoxLayout = QtWidgets.QHBoxLayout()
         spinBoxLayout.addWidget(label)
@@ -102,14 +148,18 @@ class Widget(QtWidgets.QWidget):
         for t in self.types:
             self.countWidgets[t] = CounterWidget(t, count[t], 0)
             menuLayout.addWidget(self.countWidgets[t])
-        
-
 
         mainLayout.addLayout(menuLayout)
 
         self.imageWidget = QtWidgets.QLabel()
         self.imageWidget.setFixedSize(imageSize)
+        self.setImageWidget(self.getType())
         mainLayout.addWidget(self.imageWidget)
+
+        self.textWidget = QtWidgets.QTextEdit()
+        self.textWidget.setReadOnly(True)
+
+        mainLayout.addWidget(self.textWidget)
 
     def isRecording(self):
         return self._isRecording
@@ -132,12 +182,18 @@ class Widget(QtWidgets.QWidget):
             return
         self._isRecording = True
         print('start recording')
-        
-        sleep(.1) # Синхронизация с tasksCleaner
-        
+
+        sleep(.1)  # Синхронизация с tasksCleaner
+
         # Очистка данных, которые были в считаны с гарнитуры до этого
         clearTasks()
-        
+
+        self.recordingThread = RecordingThread(self.spinBox.value(),
+                                               self.getType(),
+                                               self.get_iter_class_number)
+        self.recordingInterrupted.connect(self.recordingThread.stopRecording)
+        self.recordingThread.start()
+
         self.countdown(self.spinBox.value())
         self.stopRecording()
 
@@ -151,21 +207,12 @@ class Widget(QtWidgets.QWidget):
     def stopRecording(self):
         if not self.isRecording():
             return
-        self.data = []
-        # while not tasks.empty():
-        if not isDebugging:
-            if tasks.qsize() == 0:
-                print('No data!!!')
-            else:
-                for _ in range(128 * self.spinBox.value()):
-                    a = [self.getType(), str(self.get_iter_class_number())]
-                    a.extend([str(value) for value in eval(cyHeadset.get_data())])
-                    self.data.append(a)
+
         self._isRecording = False
         print('stop recording')
 
         self.resetButton()
-        self.imageWidget.clear()
+        # self.imageWidget.clear()
         self.optionWidget = QtWidgets.QWidget()
         self.optionWidget.setWindowTitle('Запись закончена')
         l = QtWidgets.QVBoxLayout()
@@ -223,22 +270,18 @@ class Widget(QtWidgets.QWidget):
         self.setType(t)
         self.startButtonClicked()
 
-                
-
-    def countdown(self, seconds):
+    def countdown(self, seconds, blocking=True):
         self.startButton.setText(str(seconds))
         timer = QtCore.QTimer(self)
         timer.timeout.connect(self.decreaseStartButtonTimer)
-        loop = QtCore.QEventLoop()
-        self.timeout.connect(loop.exit)
         self.countdownIsOk = True
-
         timer.start(1000)
-        loop.exec()
+        if blocking:
+            loop = QtCore.QEventLoop()
+            self.timeout.connect(loop.exit)
+            loop.exec()
         timer.timeout.disconnect()
         timer.stop()
-
-    timeout = QtCore.pyqtSignal()
 
     def decreaseStartButtonTimer(self):
         try:
@@ -258,12 +301,12 @@ class Widget(QtWidgets.QWidget):
         self.randomStartButton.setEnabled(True)
 
     def stopButtonClicked(self):
+        self.recordingInterrupted.emit()
         self.stopRecording()
 
-
-
-
     def saveButtonClicked(self):
+        data = self.recordingThread.getData()
+
         # Открываем файл для записи измерений (append)
         f = open(RECORDS_FILENAME, 'a')
 
@@ -272,13 +315,10 @@ class Widget(QtWidgets.QWidget):
             f.write(','.join(CSV_LABELS) + '\n')
 
         # Записываем данные
-        for line in self.data:
+        for line in data:
             f.write(','.join(line) + '\n')
 
         f.close()
-
-        # Очистка массива данных
-        self.data = []
 
         # Обносление счетчика
         self.countWidgets[self.getType()].increase()
@@ -319,7 +359,8 @@ class Widget(QtWidgets.QWidget):
 
     def setImageWidget(self, type):
         pixmap = QtGui.QPixmap(self.getImagePath(type))
-        pixmap = pixmap.scaledToHeight(imageSize.height(), QtCore.Qt.SmoothTransformation)
+        pixmap = pixmap.scaledToHeight(imageSize.height(),
+                                       QtCore.Qt.SmoothTransformation)
         self.imageWidget.setPixmap(pixmap)
 
     def getTypesCount(self):
@@ -338,12 +379,17 @@ class Widget(QtWidgets.QWidget):
 
                 classCol = labels.index('class')
                 iterCol = labels.index('iter')
-                while self.types.count(a[classCol]) == 0 :
-                    a = f.readline().split(',')
+                lines = f.read().split('\n')
+                i = 0
+                while self.types.count(a[classCol]) == 0:
+                    a = lines[i].split(',')
+                    i += 1
+                    if i >= len(lines):  # Если в файле нет нужных типов
+                        return count
                 count[a[classCol]] += 1
                 lastIter = int(a[iterCol])
                 lastClass = a[classCol]
-                for line in f:
+                for line in lines[i:]:
                     a = line.split(',')
                     if self.types.count(a[classCol]) == 0:
                         continue
@@ -405,10 +451,12 @@ def clearTasks():
     while not tasks.empty():
         tasks.get()
 
+
 def clearTasksIfNotRecording():
     if not w.isRecording():
         clearTasks()
-    
+
+
 def checkRecording():
     # Если за 0,2 секунды не считалось ничего, вывести ошибку
     count = tasks.qsize()
@@ -425,11 +473,12 @@ def checkRecording():
     if not isDebugging:
         print('Данные не считываются!')
 
-      
+
 def recordingRestored():
     global isRecordingOk
     print('restored')
     isRecordingOk = True
+
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
@@ -445,5 +494,5 @@ if __name__ == '__main__':
     recordingChecker = QtCore.QTimer(w)
     recordingChecker.timeout.connect(checkRecording)
     recordingChecker.start(500)
-    
+
     sys.exit(app.exec_())
