@@ -42,13 +42,24 @@ types = [file[:file.rfind('.')] for file in imagesFiles]
 # Размер, под высоту которого будут растягиваться изображения из IMAGES_DIR
 imageSize = QtCore.QSize(640, 480)
 
+data = []
 
-def dataReceived(value):
+
+def processData(data):
     pass
 
 
+def dataReceived(value):
+    global data
+    data.append(value)
+    if len(data) >= HEADSET_FREQUENCY:
+        processData(data)
+    data = []
+
+
 def addTextToWidget(text):
-    """Добавляет в виджет новую строку текста"""
+    """Добавляет в виджет новую строку текста
+    """
 
     w.textWidget.setText(w.textWidget.toPlainText() + text + '\n')
 
@@ -98,10 +109,12 @@ class Widget(QtWidgets.QWidget):
 
         self.radioButtons = [QtWidgets.QRadioButton(str(x)) for x in types]
         groupBox = QtWidgets.QGroupBox('Варианты')
+
         buttonsLayout = QtWidgets.QVBoxLayout()
         buttonsLayout.setAlignment(QtCore.Qt.AlignLeft)
         for b in self.radioButtons:
             buttonsLayout.addWidget(b)
+            b.clicked.connect(self.typeChanged)
         self.radioButtons[0].setChecked(True)
         groupBox.setLayout(buttonsLayout)
 
@@ -176,6 +189,9 @@ class Widget(QtWidgets.QWidget):
             if self.radioButtons[i].text() == type:
                 self.radioButtons[i].setChecked(True)
                 return
+
+    def typeChanged(self, type):
+        self.setImageWidget(self.getType())
 
     def startRecording(self):
         if self.isRecording():
@@ -368,9 +384,9 @@ class Widget(QtWidgets.QWidget):
         #   из файла с данными
         count = dict.fromkeys(self.types, 0)
         if not os.path.exists(RECORDS_FILENAME):
-            f = open(RECORDS_FILENAME,'a')
+            f = open(RECORDS_FILENAME, 'a')
             f.close()
-    
+
         if os.path.getsize(RECORDS_FILENAME) != 0:  # if file has size
             try:
                 f = open(RECORDS_FILENAME)
@@ -470,14 +486,8 @@ def checkRecording():
     count = tasks.qsize()
     if count != 0:
         return
-    if not isDebugging:
+    if not isDebugging and not w.isRecording():
         print('Данные не считываются!')
-
-
-def recordingRestored():
-    global isRecordingOk
-    print('restored')
-    isRecordingOk = True
 
 
 if __name__ == '__main__':
