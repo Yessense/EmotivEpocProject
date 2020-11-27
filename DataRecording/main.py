@@ -71,7 +71,7 @@ class RecordingThread(Thread):
             if self._stopRecording:
                 break
             if not isDebugging:
-                line = [type, str(self.iterNumber)]
+                line = [self.type, str(self.iterNumber)]
                 line.extend([str(value) for value
                              in eval(cyHeadset.get_data())])
                 self.data.append(line)
@@ -190,7 +190,7 @@ class Widget(QtWidgets.QWidget):
 
         self.recordingThread = RecordingThread(self.spinBox.value(),
                                                self.getType(),
-                                               self.get_iter_class_number)
+                                               self.get_iter_class_number())
         self.recordingInterrupted.connect(self.recordingThread.stopRecording)
         self.recordingThread.start()
 
@@ -496,3 +496,7 @@ if __name__ == '__main__':
     recordingChecker.start(500)
 
     sys.exit(app.exec_())
+
+
+# TODO: Данные не считываются
+# TODO: Фотки не меняются
